@@ -5,18 +5,75 @@ date: "March 6, 2016"
 output: html_document
 ---
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+# Background & Question
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+Our goal is to predict the manner in which they did the exercise. This is the "classe" variable in the training set.
 
+# Data
+The training data for this project was obtained from here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data was obtained from here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+Using these URLs, the data was downloaded and loaded into our working directory:
 ```{r}
-summary(cars)
+testingData <- read.csv("pml-testing.csv", na.strings=c("NA","#DIV/0!",""))
+trainingData <- read.csv("pml-training.csv", na.strings=c("NA","#DIV/0!",""))
+dim(trainingData)
+dim(testingData)
+```
+Looking at the data shows that we have a large training set and a small test set. To give us a better design, we'll split the data into 60% training and 40% test.
+Since we need to predict the "classe" variable for our prediction, we include that.
+```{r}
+library(caret) #load the libraries needed
+set.seed(3582) #set seed for reproducibility
+inTraining <- createDataPartition(y=trainingData$classe, p=0.6, list=FALSE)
+myTraining <- trainingData[inTraining, ]
+myTest <- trainingData[-inTraining, ]
+dim(myTraining)
+dim(myTest)
 ```
 
-You can also embed plots, for example:
-
-```{r, echo=FALSE}
-plot(cars)
+# Features
+We start by cleaning the data set and only keeping variables needed for our model. We apply these both to the training set and the test set.
+```{r}
+# First, we remove variables with nearly zero variance
+nzv <- nearZeroVar(myTraining)
+cleanTraining <- myTraining[, -nzv]
+cleanTest <- myTest[, -nzv]
+# Second, we remove variables that are almost always NA
+mostlyNA <- sapply(cleanTraining, function(x) mean(is.na(x))) > 0.95
+cleanTraining <- cleanTraining[, mostlyNA==F]
+cleanTest <- cleanTest[, mostlyNA==F]
+# Finally, we remove the first 5 variables that don't seem related to the model, i.e. timestamps, names, etc.
+cleanTraining <- cleanTraining[, -(1:5)]
+cleanTest <- cleanTest[, -(1:5)]
+dim(cleanTraining)
+dim(cleanTest)
 ```
+As a result, we've reduced the data set from 160 variables to 54 variables.
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+# Model Building
+We start with the Random Forest model on the reduced training set.
+```{r}
+library(randomForest)
+myModel <- randomForest(classe~., data = cleanTraining)
+print(myModel)
+```
+Next, we apply the model on our testing data.
+```{r}
+myPrediction <- predict(myModel, cleanTest, type = "class")
+confusionMatrix(cleanTest$classe, myPrediction)
+```
+Finally, we apply the model on the orignal training set.
+```{r}
+myTrainingPrediction <- predict(myModel, myTraining, type = "class")
+confusionMatrix(myTraining$classe, myTrainingPrediction)
+```
+We can see that the accuracy level is 99.71% on our "processed" testing data and shows 100% accuracy when fit to the original dataset. Now we apply it to the original testing data set.
+```{r}
+myFinalPrediction <- predict(myModel, testingData, type = "class")
+print(myFinalPrediction)
+```
